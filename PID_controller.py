@@ -1,0 +1,25 @@
+import numpy as np
+
+
+class PID():
+    def __init__(self, KP, KI, KD, saturation_min, saturation_max):
+        self.kp = KP
+        self.ki = KI
+        self.kd = KD
+        self.prev_error = 0
+        self.integral_error = 0
+        self.saturation_max = saturation_max
+        self.saturation_min = saturation_min
+
+    def compute(self, curr_error, dt):
+        derivative_error = (curr_error - self.prev_error) / dt # Rate of Change of Error
+
+        self.integral_error += curr_error * dt # Sum of error
+
+        output = (self.kp * curr_error) + (self.ki * self.integral_error) + (self.kd * derivative_error)
+
+        self.prev_error = curr_error
+
+        output = np.clip(output, self.saturation_min, self.saturation_max)
+
+        return output
