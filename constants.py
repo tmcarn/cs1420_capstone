@@ -10,11 +10,11 @@ THRUST_AMP = 0.04
 # Propeller force for LEFT and RIGHT rotations
 DIFF_AMP = 0.003
 
-DRONE_PATH = "drone (1).png"
+DRONE_PATH = "assets/images/drone_img.png"
 DRONE_WIDTH = 200 #px
 DRONE_LENGTH = 25 #px
 
-TARGET_PATH = "red_target.png"
+TARGET_PATH = "assets/images/red_target.png"
 TARGET_WIDTH = 100
 NUM_TARGETS = 100
 
