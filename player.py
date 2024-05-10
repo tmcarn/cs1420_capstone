@@ -15,13 +15,17 @@ import numpy as np
 from math import pi
 
 
-from PID_controller import PID
+from PID.PID_controller import PID
 import constants
+from target import Target 
+
+from stable_baselines3 import PPO, SAC
+# from PPO_Env import PPOEnv
 
 
 class Drone():
     
-    def __init__(self, x, y, targets) -> None:
+    def __init__(self, x, y) -> None:
         self.init_pos = np.array([x, y, 0]) # For respawning
         
         self.x_error = None
@@ -32,7 +36,7 @@ class Drone():
         # Angle between the to_target vector and the velocity vector
         self.angle_error = None
 
-        self.targets = targets
+        self.current_target = None
         self.time_alive = 0
         self.target_num = 0
         self.score = 0
@@ -70,7 +74,7 @@ class Drone():
 
         return self.pos
     
-    def reached_target(self, target):
+    def reached_target(self):
         self.get_target_error()
 
         if abs(self.distance_to_target) < constants.HIT_THRESH :
@@ -79,13 +83,11 @@ class Drone():
         return False
     
     def get_target_error(self):
-        pos_error = self.targets[self.target_num].pos - self.pos[:-1]
+        pos_error = self.current_target.pos - self.pos[:-1]
 
         self.x_error = pos_error[0]
         self.y_error = pos_error[1]
         self.distance_to_target = np.linalg.norm(np.array([self.x_error, self.y_error]))
-
-
         
         self.angle_to_target = np.arctan2(self.y_error, self.x_error)
 
@@ -94,6 +96,9 @@ class Drone():
         self.angle_error = self.angle_to_target - self.angle_of_velocity
 
         return self.distance_to_target / 500, self.angle_to_target, self.angle_error
+    
+    def assign_new_target(self, x, y):
+        self.current_target = Target(x,y)
 
     
     def is_dead(self):
@@ -105,7 +110,7 @@ class Drone():
         return False
     
     def respawn(self):
-        self.__init__(self.init_pos[0], self.init_pos[1], self.targets)
+        self.__init__(self.init_pos[0], self.init_pos[1])
 
     
     def get_im_pos(self):
@@ -113,9 +118,9 @@ class Drone():
         return self.im_pos
 
 class PIDDrone(Drone):
-    def __init__(self, x, y, targets):
+    def __init__(self, x, y):
         self.name = "PID"
-        super().__init__(x,y, targets)
+        super().__init__(x,y)
 
         self.x_dist_PID = PID(0.2, 0, 0.2, -25, 25)
         self.angle_PID = PID(0.02, 0, 0.01, -1, 1)
@@ -123,26 +128,25 @@ class PIDDrone(Drone):
         self.y_dist_PID = PID(2.5, 0, 1.5, -100, 100)
         self.y_vel_PID = PID(1, 0, 0, -1, 1)
 
-    def act(self, target):
+    def act(self):
         thruster_left = constants.THRUST_AMP
         thruster_right = constants.THRUST_AMP
 
         self.get_target_error()
 
-        pos_error = target.pos - self.pos[:-1]
-        x_error = pos_error[0]
-        y_error = pos_error[1]
+        self.x_error
+        self.y_error
         x_vel = self.vels[0]
         y_vel = self.vels[1]
         ang_vel = self.vels[2]
         ang = self.pos[2]
         
-
-        ang_desired = self.x_dist_PID.compute(-x_error, self.dt)
+        #PID Controllers
+        ang_desired = self.x_dist_PID.compute(-self.x_error, self.dt)
         ang_error = ang_desired - ang
         diff_desired = self.angle_PID.compute(-ang_error, self.dt)
 
-        y_vel_desired = self.y_dist_PID.compute(y_error, self.dt)
+        y_vel_desired = self.y_dist_PID.compute(self.y_error, self.dt)
         y_vel_error = y_vel_desired - y_vel
         thrust_desired = self.y_vel_PID.compute(-y_vel_error, self.dt)
 
@@ -159,11 +163,11 @@ class PIDDrone(Drone):
     
 
 class HumanDrone(Drone):
-    def __init__(self, x, y, targets):
+    def __init__(self, x, y):
         self.name = "PID"
-        super().__init__(x,y, targets)
+        super().__init__(x,y)
 
-    def act(self, target):
+    def act(self):
         pressed_keys = pygame.key.get_pressed()
 
         thruster_left = constants.THRUST_AMP
@@ -188,9 +192,102 @@ class HumanDrone(Drone):
         return self.thrust
 
     
-class SACDrone(Drone):
+class PPODrone(Drone):
     def __init__(self, x, y):
-        self.name = "SAC"
+        self.name = "PPO"
         super().__init__(x,y)
 
+        # Create and wrap the environment
+        # env = PPOEnv()
+        # env.reset()
 
+        model_path = "models/PPO/290000.zip"
+
+        self.model = PPO.load(model_path) 
+
+    def get_observation(self):
+        # Intrinsic
+        angle_to_up = self.pos[2] / 180 * pi 
+        mag_of_vel = np.linalg.norm(self.vels[:-1])
+        angle_of_velocity = np.arctan2(self.vels[1], self.vels[0])
+        
+        # Relative to Target
+        distance_to_target, angle_to_target, angle_error = self.get_target_error()
+
+        return np.array([
+            angle_to_up,
+            mag_of_vel,
+            angle_of_velocity,
+            distance_to_target,
+            angle_to_target,
+            angle_error
+        ], dtype='float32')
+
+    def act(self):
+        self.observation = self.get_observation()
+        action, _states = self.model.predict(self.observation)
+
+        (action0, action1) = (action[0], action[1])
+
+        thruster_left = constants.THRUST_AMP
+        thruster_right = constants.THRUST_AMP
+
+        thruster_left += action0 * constants.THRUST_AMP
+        thruster_right += action0 * constants.THRUST_AMP
+        thruster_left += action1 * constants.DIFF_AMP
+        thruster_right -= action1 * constants.DIFF_AMP
+
+        self.thrust = np.array([thruster_left, thruster_right])
+
+        return self.thrust
+
+
+
+class SACDrone(Drone):
+    def __init__(self, x, y):
+        self.name = "PPO"
+        super().__init__(x,y)
+
+        # Create and wrap the environment
+        # env = PPOEnv()
+        # env.reset()
+
+        model_path = "models/SAC-1/20000.zip"
+
+        self.model = SAC.load(model_path) 
+
+    def get_observation(self):
+        # Intrinsic
+        angle_to_up = self.pos[2] / 180 * pi 
+        mag_of_vel = np.linalg.norm(self.vels[:-1])
+        angle_of_velocity = np.arctan2(self.vels[1], self.vels[0])
+        
+        # Relative to Target
+        distance_to_target, angle_to_target, angle_error = self.get_target_error()
+
+        return np.array([
+            angle_to_up,
+            mag_of_vel,
+            angle_of_velocity,
+            distance_to_target,
+            angle_to_target,
+            angle_error
+        ], dtype='float32')
+
+    def act(self):
+        self.observation = self.get_observation()
+        action, _states = self.model.predict(self.observation)
+
+        (action0, action1) = (action[0], action[1])
+
+        thruster_left = constants.THRUST_AMP
+        thruster_right = constants.THRUST_AMP
+
+        thruster_left += action0 * constants.THRUST_AMP
+        thruster_right += action0 * constants.THRUST_AMP
+        thruster_left += action1 * constants.DIFF_AMP
+        thruster_right -= action1 * constants.DIFF_AMP
+
+        self.thrust = np.array([thruster_left, thruster_right])
+
+        return self.thrust

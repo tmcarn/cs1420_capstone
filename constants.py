@@ -2,13 +2,14 @@
 FPS = 60
 SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 800
+SPEED_UP = 1
 
-GRAVITY = .08
+GRAVITY = .08 * SPEED_UP
 
 # Propeller force for UP and DOWN
-THRUST_AMP = 0.04
+THRUST_AMP = 0.04 * SPEED_UP
 # Propeller force for LEFT and RIGHT rotations
-DIFF_AMP = 0.003
+DIFF_AMP = 0.003 * SPEED_UP
 
 DRONE_PATH = "assets/images/drone_img.png"
 DRONE_WIDTH = 200 #px
