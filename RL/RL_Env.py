@@ -5,7 +5,8 @@ from gymnasium import spaces
 import pygame
 import numpy as np
 from math import pi
-from player import Drone
+from Drones import SACDrone, Drone
+from target import Target
 import constants
 
 
@@ -14,113 +15,112 @@ class RLEnv(gym.Env):
 
     metadata = {"render_modes": ["human"], "render_fps": 30}
 
-    def __init__(self):
+    def __init__(self, drone:Drone):
         super().__init__()
+        self.screen = pygame.display.set_mode((constants.SCREEN_WIDTH, constants.SCREEN_HEIGHT))
 
-        # Set up the display
-        # self.screen = pygame.display.set_mode((constants.SCREEN_WIDTH, constants.SCREEN_HEIGHT))
         self.clock = pygame.time.Clock()
-        self.time_alive_limit = 50
+        self.time_alive_limit = 20
 
         # Load drone image
         self.drone_image = pygame.image.load(constants.DRONE_PATH)
         # Load target image
         self.target_image = pygame.image.load(constants.TARGET_PATH)
 
+        # drone for training
+        self.drone = drone
         
-        self.drone = Drone(constants.SCREEN_WIDTH/2, constants.SCREEN_HEIGHT/2)
-        
-        self.target_position = np.random.randint(constants.SCREEN_HEIGHT, size=(2,))
-        self.drone.assign_new_target(self.target_position[0], self.target_position[1])
+        init_target_pos = np.random.randint(constants.SCREEN_HEIGHT, size=(2,))
+        self.target = Target(init_target_pos[0], init_target_pos[1])
 
         self.done = False
 
+        if drone.name == "SAC":
+            # 2 action thrust amplitude and thrust difference in float values between -1 and 1
+            self.action_space = spaces.Box(low=-1, high=1, shape=(2,))
 
-        # 2 action thrust amplitude and thrust difference in float values between -1 and 1
-        self.action_space = spaces.Box(low=-1, high=1, shape=(2,))
+        else:
+             # 5 actions: Nothing, Up, Down, Right, Left
+            self.action_space = gym.spaces.Discrete(5)
+
         # 6 observations: angle_to_up, velocity, angle_velocity, distance_to_target, angle_to_target, angle_target_and_velocity
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(6,))
+
+
 
     def step(self, action):
          # Game loop
         self.reward = 0.0
-        (action0, action1) = (action[0], action[1])
 
-        thruster_left = constants.THRUST_AMP
-        thruster_right = constants.THRUST_AMP
+        if self.drone.name == 'SAC':
+            (action0, action1) = (action[0], action[1])
+            new_thrust = self.drone.get_thrust(action0, action1)
 
-        thruster_left += action0 * constants.THRUST_AMP
-        thruster_right += action0 * constants.THRUST_AMP
-        thruster_left += action1 * constants.DIFF_AMP
-        thruster_right -= action1 * constants.DIFF_AMP
+        else:
+            new_thrust = self.drone.get_thrust(action)
 
-        new_thrust = np.array([thruster_left, thruster_right])
 
-        self.drone.update(new_thrust)
-        self.observation = self.get_observation()
+        for i in range(constants.UPDATES_PER_STEP): # Same action used for multiple steps, to speed up training
 
-        self.drone.time_alive += self.drone.dt
-    
-        self.reward += self.drone.dt / 60 # Rewarded for Staying Alive
-        self.reward -= self.drone.distance_to_target / (60*100) # Penalized for being far from target
+            self.drone.update(new_thrust)
+            self.observation = self.drone.get_observation(self.target)
 
-        # self.reward -= self.time_since_target / 120 # Penalized for being slow
+            x_error, y_error = self.drone.get_target_error(self.target)
+            distance_to_target = np.linalg.norm(np.array([x_error, y_error]))
 
-        if self.drone.is_dead() or self.drone.distance_to_target > 1000:
-            self.done = True
-            self.drone.time_alive = 0
-            self.reward -= 1000 # Penalized Heavily for Dying
+            self.drone.time_alive += 1/60
+            self.reward += 1/60 # Rewarded for Staying Alive
+            self.reward -= distance_to_target / (60*100) # Penalized for being far from target
 
-        
-        elif self.drone.reached_target():
-            self.done = False
-            self.reward += 100 # Rewarded for Reaching Target
-            self.drone.target_num += 1
+            if distance_to_target > 1000:
+                self.done = True
+                self.reward -= 1000 # Penalized Heavily for Dying
+                break # step finished
 
-            self.target_position = np.random.randint(constants.SCREEN_HEIGHT, size=(2,))
-            self.drone.assign_new_target(self.target_position[0], self.target_position[1])
+            elif self.drone.reached_target(self.target):
+                self.done = False
+                self.reward += 100 # Rewarded for Reaching Target
+                self.drone.targets_hit += 1
 
-        # elif self.time_since_target > self.time_since_target_limit:
-        #     self.done = True
+                # Update Target
+                new_target_position = np.random.randint(constants.SCREEN_HEIGHT, size=(2,))
+                self.target = Target(new_target_position[0], new_target_position[1])
 
-        elif self.drone.time_alive > self.time_alive_limit: 
-            self.done = True
+
+            elif self.drone.time_alive > self.time_alive_limit: # Exceeded Timer
+                self.done = True
+                break # step finished
 
         self.info = {}
         self.truncated = False
+
         return self.observation, self.reward, self.done, self.truncated, self.info
 
     def reset(self, seed=None, options=None):
         self.done = False
-        self.drone.respawn()
+        drone_pos = np.random.uniform(0, constants.SCREEN_HEIGHT, (2,))
+        self.drone.respawn(drone_pos[0], drone_pos[1])
 
-        self.target_position = np.random.randint(constants.SCREEN_HEIGHT, size=(2,))
-        self.drone.assign_new_target(self.target_position[0], self.target_position[1])
+        # Update Target
+        new_target_position = np.random.randint(constants.SCREEN_HEIGHT, size=(2,))
+        self.target = Target(new_target_position[0], new_target_position[1])
 
-        self.observation = self.get_observation()
+        self.observation = self.drone.get_observation(self.target)
         return self.observation, {}
-    
-    def get_observation(self):
-        # Intrinsic
-        angle_to_up = self.drone.pos[2] / 180 * pi 
-        mag_of_vel = np.linalg.norm(self.drone.vels[:-1])
-        angle_of_velocity = np.arctan2(self.drone.vels[1], self.drone.vels[0])
-        
-        # Relative to Target
-        distance_to_target, angle_to_target, angle_error = self.drone.get_target_error()
 
-        return np.array([
-            angle_to_up,
-            mag_of_vel,
-            angle_of_velocity,
-            distance_to_target,
-            angle_to_target,
-            angle_error
-        ], dtype='float32')
+    def render(self):
+        self.screen.fill((200, 200, 200))
+        # Display Target
+        self.screen.blit(self.target_image, self.drone.target.im_pos)
+        # Display Drone
+        rotated_image = pygame.transform.rotate(self.drone_image, self.drone.pos[2])
+        rotated_rect = rotated_image.get_rect(center=self.drone_image.get_rect(topleft=self.drone.im_pos).center)
+        self.screen.blit(rotated_image, rotated_rect)
 
-
-    # def render(self):
-    #     ...
+        # Update the display
+        pygame.display.flip()
+        # Cap the frame rate
+        self.drone.dt = self.clock.tick(constants.FPS) / 1000
 
     # def close(self):
     #     ...
