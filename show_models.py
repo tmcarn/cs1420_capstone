@@ -23,7 +23,7 @@ def main():
     for i in range(constants.NUM_TARGETS):
         target_positions = np.random.randint(constants.SCREEN_HEIGHT, size=(constants.NUM_TARGETS, 2))
 
-    drones = [SACDrone(screen.get_width()/2, screen.get_height()/2, load_from='models/SAC-1_cont-cont/1800000.zip')]
+    drones = [SACDrone(screen.get_width()/2, screen.get_height()/2, load_from='models/SAC-1_continued/1600000.zip')]
 
     for drone in drones:
         # Update Target

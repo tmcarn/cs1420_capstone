@@ -29,12 +29,11 @@ env = RLEnv(drone)
 env.reset()
 
 # # Create SAC agent
-model = SAC("MlpPolicy", env, verbose=1, tensorboard_log=logdir)
-
+model = SAC("MlpPolicy", env, verbose=1, tensorboard_log=logdir, device='cuda')
 # model = SAC.load("models/SAC-1_cont-cont/1900000.zip", env)
 
 TIMESTEPS = 100000
 iters = 0
-for i in range(20,101):
+for i in range(1,101):
     model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name=f"SAC-{model_num}")
     model.save(f"{models_dir}/{TIMESTEPS*(i)}")
