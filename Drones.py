@@ -31,6 +31,8 @@ class Drone():
         self.time_alive = 0
         self.target = None
         self.targets_hit = 0
+        self.finished = False
+        self.time_to_finish = None
         self.score = 0
 
         self.MAX_THRUST = 0.8
@@ -61,9 +63,7 @@ class Drone():
 
         return self.thrust
 
-    """
-    Takes in thrust levels for both "propellers" and calculated new position based on rigid body equations
-    """
+
     def update(self, new_thrust):
         self.thrust = new_thrust
 
@@ -121,9 +121,11 @@ class Drone():
         ], dtype='float32')
 
     def is_dead(self): # Checks if drone is beyond screen
-        if (not (-constants.REC_DIST < self.pos[0] < constants.SCREEN_WIDTH + constants.REC_DIST) 
-            or not (-constants.REC_DIST < self.pos[1] < constants.SCREEN_HEIGHT + constants.REC_DIST)):
-            self.dead = True
+        x_error, y_error = self.get_target_error(self.target)
+        distance_to_target = np.linalg.norm(np.array([x_error, y_error]))
+
+        if distance_to_target > constants.MAX_DIST:
+            self.done = True
             return True
         
         return False
@@ -173,10 +175,10 @@ class PIDDrone(Drone):
 
 class HumanDrone(Drone):
     def __init__(self, x, y):
-        self.name = "PID"
+        self.name = "Human"
         super().__init__(x,y)
 
-    def act(self):
+    def act(self, target):
         pressed_keys = pygame.key.get_pressed()
 
         thruster_left = constants.THRUST_AMP
@@ -212,7 +214,7 @@ class SACDrone(Drone):
             self.model = SAC.load(model_path) 
 
     # For Testing
-    def act(self):
+    def act(self, target):
         self.observation = self.get_observation(self.target)
         action, _states = self.model.predict(self.observation)
 
@@ -232,29 +234,6 @@ class DQNDrone(Drone):
             # Load Trained Model
             model_path = load_from
             self.model = DQN.load(model_path) 
-
-    def get_observation(self, target):
-        # Intrinsic
-        angle_to_up = self.pos[2] / 180 * pi 
-        mag_of_vel = np.linalg.norm(self.vels[:-1])
-        angle_of_velocity = np.arctan2(self.vels[1], self.vels[0])
-        
-        # Relative to Target
-        x_error, y_error = self.get_target_error(target)
-         
-        distance_to_target = np.linalg.norm(np.array([x_error, y_error]))
-        angle_to_target = np.arctan2(y_error, x_error)
-        angle_of_velocity = np.arctan2(self.vels[1], self.vels[0])
-        angle_error = angle_to_target - angle_of_velocity
-
-        return np.array([
-            angle_to_up,
-            mag_of_vel,
-            angle_of_velocity,
-            distance_to_target / 500, # Normalized
-            angle_to_target,
-            angle_error
-        ], dtype='float32')
     
     def get_thrust(self, action):
         thruster_left = constants.THRUST_AMP
@@ -278,7 +257,7 @@ class DQNDrone(Drone):
         return np.array([thruster_left, thruster_right])
 
     # For Testing
-    def act(self):
+    def act(self, target):
         self.observation = self.get_observation(self.target)
         action, _states = self.model.predict(self.observation)
 
@@ -286,4 +265,59 @@ class DQNDrone(Drone):
         self.thrust = self.get_thrust(action0, action1)
 
         return self.thrust
+
+class PIDSACDrone(Drone):
+    def __init__(self, x, y, load_from=None):
+        self.name = "PIDSAC"
+        super().__init__(x,y)
+
+        # Initial Params
+        self.x_dist_PID = PID(0.2, 0, 0.2, -25, 25)
+        self.angle_PID = PID(0.02, 0, 0.01, -1, 1)
+
+        self.y_dist_PID = PID(2.5, 0, 1.5, -100, 100)
+        self.y_vel_PID = PID(1, 0, 0, -1, 1)
+
+        self.path = load_from
+
+        self.model = None
+
+        if load_from != None:
+            self.model = SAC.load(load_from)
+
+    def act(self, target):
+        if self.time_alive == 0:
+            self.observation = self.get_observation(self.target)
+            action, _states = self.model.predict(self.observation)
+            # Update PIDs based on action
+            self.x_dist_PID.tune(action[0][0], action[0][1], action[0][2], action[0][3])
+            self.angle_PID.tune(action[1][0], action[1][1], action[1][2], action[1][3])
+
+            self.y_dist_PID.tune(action[2][0], action[2][1], action[2][2], action[2][3])
+            self.y_vel_PID.tune(action[3][0], action[3][1], action[3][2], action[3][3])
+
+        x_error, y_error = self.get_target_error(target)
+
+        x_vel = self.vels[0]
+        y_vel = self.vels[1]
+        ang_vel = self.vels[2]
+        ang = self.pos[2]
         
+        #PID Controllers
+        ang_desired = self.x_dist_PID.compute(-x_error, self.dt)
+        ang_error = ang_desired - ang
+        diff_desired = self.angle_PID.compute(-ang_error, self.dt)
+
+        y_vel_desired = self.y_dist_PID.compute(y_error, self.dt)
+        y_vel_error = y_vel_desired - y_vel
+        thrust_desired = self.y_vel_PID.compute(-y_vel_error, self.dt)
+
+        # Update thrust levels
+        self.thrust = np.clip(self.get_thrust(thrust_desired, diff_desired), 0, 1)
+
+        return self.thrust
+
+    def respawn(self, x,y):
+        self.__init__(x,y, load_from=self.path)
+
+

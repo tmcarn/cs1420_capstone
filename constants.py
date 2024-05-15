@@ -13,17 +13,16 @@ DIFF_AMP = 0.003 * SPEED_UP
 
 DRONE_PATH = "assets/images/drone_img.png"
 DRONE_WIDTH = 200 #px
-DRONE_LENGTH = 25 #px
+DRONE_LENGTH = 30 #px
 
 TARGET_PATH = "assets/images/red_target.png"
 TARGET_WIDTH = 100
-NUM_TARGETS = 100
+NUM_TARGETS = 20
 
-
-REC_DIST = 200 # Room for Recovery
-
-HIT_THRESH = 5
+HIT_THRESH = 50
 
 INTERACTIVE = False
 
-UPDATES_PER_STEP = 5
+UPDATES_PER_STEP = 10
+
+MAX_DIST = 1200

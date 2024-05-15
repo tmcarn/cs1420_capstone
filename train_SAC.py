@@ -1,6 +1,6 @@
 
 """
-Train an PPO agent using sb3 on the PPO_ENV environment
+Train a SAC agent using sb3 on the RL_Env or RL2_Env environment
 """
 
 import os

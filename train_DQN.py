@@ -1,6 +1,6 @@
 
 """
-Train an DQN agent using sb3 on the RL_ENV environment
+Train an DQN agent using sb3 on the RL_Env environment
 """
 
 import os
