@@ -11,9 +11,6 @@ import constants
 
 
 class PIDRLEnv(gym.Env):
-    """Custom Environment that follows gym interface."""
-
-    metadata = {"render_modes": ["human"], "render_fps": 30}
 
     def __init__(self, drone, baseline):
         super().__init__()
@@ -93,6 +90,7 @@ class PIDRLEnv(gym.Env):
                 # Update Target
                 new_target_position = np.random.randint(constants.SCREEN_HEIGHT, size=(2,))
                 self.target = Target(new_target_position[0], new_target_position[1])
+                break
 
 
             elif self.drone.time_alive > self.time_alive_limit: # Exceeded Timer

@@ -12,9 +12,6 @@ import constants
 
 
 class RLEnv2(gym.Env):
-    """Custom Environment that follows gym interface."""
-
-    metadata = {"render_modes": ["human"], "render_fps": 30}
 
     def __init__(self, drone:Drone):
         super().__init__()

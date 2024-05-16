@@ -17,7 +17,7 @@ DRONE_LENGTH = 30 #px
 
 TARGET_PATH = "assets/images/red_target.png"
 TARGET_WIDTH = 100
-NUM_TARGETS = 20
+NUM_TARGETS = 5
 
 HIT_THRESH = 50
 

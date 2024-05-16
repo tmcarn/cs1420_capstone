@@ -27,11 +27,6 @@ class PID():
 
         self.integral_error += curr_error * dt # Sum of error
 
-        # Prevents wind up (if saturated, integral error is not added)
-        if self.prev_out != None and not ((curr_error>0 and self.prev_out == self.saturation_max) or (curr_error < 0 and self.prev_out == self.saturation_min)):
-            self.integral_error += curr_error * dt # Sum of error
-
-
         output = (self.kp * curr_error) + (self.ki * self.integral_error) + (self.kd * derivative_error)
 
         self.prev_error = curr_error

@@ -1,0 +1,6 @@
+In order to run the demo for this project, clone the repository and run `show_models.py`
+
+There are a few flags you can add or omit for different features
+ - -i / --interactive : Toggling this flag switches you to interactive mode where instead of targets being randomly generated for the drones, your mouse sets the target for all of the drones. There is no scoring in this mode but it allows you to see how the different controllers adapt to dynamic targets
+
+ - -v / --vis_thurst : Toggling this flag allows you to visualize how the thrust of each propeller is changing as the drone flies. The two bars under each drones score represents the magnitude of thrust for the left and right motors respectfully. The longer the bar is, the more thrust being applied at that moment.

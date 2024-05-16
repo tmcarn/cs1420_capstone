@@ -1,9 +1,10 @@
 import pygame
 import numpy as np
 import argparse
+import matplotlib.pyplot as plt
 
 
-from Drones import HumanDrone, PIDDrone, SACDrone, PIDSACDrone
+from Drones import HumanDrone, PIDDrone, SACDrone, PIDSACDrone, PIDSAC2Drone
 from target import Target
 import constants
    
@@ -14,6 +15,8 @@ def main(args):
         vis_thrust = True
     else: 
         vis_thrust = False
+
+    
 
     # Initialize Pygame
     pygame.init()
@@ -36,10 +39,10 @@ def main(args):
     else:
         target_positions = np.random.randint(constants.SCREEN_HEIGHT, size=(constants.NUM_TARGETS, 2))
 
-    drones = [HumanDrone(screen.get_width()/2, screen.get_height()/2),
-              PIDDrone(screen.get_width()/2, screen.get_height()/2),
+    drones = [PIDDrone(screen.get_width()/2, screen.get_height()/2),
+              SACDrone(screen.get_width()/2, screen.get_height()/2, load_from='oscar_models/SAC 5_300_000.zip'),
               PIDSACDrone(screen.get_width()/2, screen.get_height()/2, load_from='oscar_models/pid 280_000.zip'),
-              SACDrone(screen.get_width()/2, screen.get_height()/2, load_from='oscar_models/SAC 5_300_000.zip')]
+              PIDSAC2Drone(screen.get_width()/2, screen.get_height()/2, load_from='oscar_models/pid3.0 100_000.zip')]
 
     for drone in drones:
         # Update Target
@@ -81,7 +84,9 @@ def main(args):
                         drone.time_to_finish = total_time
                         break # All Done
                     drone.target = Target(target_positions[drone.targets_hit][0], target_positions[drone.targets_hit][1])
-
+                    
+                    if drone.name=='PIDSAC2':
+                        drone.update_pid(drone.target)
             else:
                 drone.time_alive += drone.dt
 
@@ -121,7 +126,7 @@ def main(args):
 
     # Quit Pygame
     pygame.quit()
-     
+
 
 if __name__=="__main__":
     # call the main function
